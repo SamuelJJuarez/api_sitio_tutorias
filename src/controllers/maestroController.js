@@ -61,10 +61,10 @@ const register = async (req, res) => {
 // Inicio de sesión
 const login = async (req, res) => {
   try {
-    const { correo, contraseña } = req.body;
+    const { correo, contrasena } = req.body;
 
     // Validar datos de entrada
-    if (!correo|| !contraseña) {
+    if (!correo || !contrasena) {
       return res.status(400).json({ 
         success: false, 
         message: 'El correo y la contraseña son obligatorios' 
@@ -87,7 +87,7 @@ const login = async (req, res) => {
     const user = users[0];
 
     // Verificar contraseña
-    const isPasswordValid = await bcrypt.compare(contraseña, user.contrasena);
+    const isPasswordValid = await bcrypt.compare(contrasena, user.contrasena);
 
     if (!isPasswordValid) {
       return res.status(401).json({ 

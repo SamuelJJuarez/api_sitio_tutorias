@@ -13,10 +13,6 @@ const register = async (req, res) => {
       });
     }
 
-    const [rows] = await pool.query('SELECT COUNT(*) AS total FROM grupos');
-
-    const totalGrupos = rows[0].total;
-
     // Verificar si el grupo ya existe
     const [existingGroup] = await pool.query(
       'SELECT * FROM grupos WHERE letra_grupo = ? AND periodo = ? AND carrera = ? AND num_control_prof = ?',
@@ -30,12 +26,10 @@ const register = async (req, res) => {
       });
     }
 
-    const indice_grupo = totalGrupos + 1;
-
     // Insertar usuario en la base de datos
     const [result] = await pool.query(
-      'INSERT INTO grupos (indice_grupo, letra_grupo, periodo, carrera, num_control_prof) VALUES (?, ?, ?, ?, ?)',
-      [indice_grupo, letra_grupo, periodo, carrera, num_control_prof]
+      'INSERT INTO grupos (letra_grupo, periodo, carrera, num_control_prof) VALUES (?, ?, ?, ?)',
+      [letra_grupo, periodo, carrera, num_control_prof]
     );
     
 
@@ -43,7 +37,6 @@ const register = async (req, res) => {
       success: true,
       message: 'Grupo registrado exitosamente',
       data: {
-        indice_grupo: indice_grupo,
         letra_grupo: letra_grupo,
         periodo: periodo,
         carrera: carrera,

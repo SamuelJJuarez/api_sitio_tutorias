@@ -1,11 +1,10 @@
 const jwt = require('jsonwebtoken');
 
-// Middleware para verificar el token JWT
-const authenticateToken = (req, res, next) => {
+// Le cambiamos el nombre a verifyToken para coincidir con tus rutas
+const verifyToken = (req, res, next) => {
   try {
-    // Obtener el token del header Authorization
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+    const token = authHeader && authHeader.split(' ')[1];
 
     if (!token) {
       return res.status(401).json({ 
@@ -14,7 +13,6 @@ const authenticateToken = (req, res, next) => {
       });
     }
 
-    // Verificar el token
     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
       if (err) {
         return res.status(403).json({ 
@@ -23,17 +21,17 @@ const authenticateToken = (req, res, next) => {
         });
       }
 
-      // Guardar la información del usuario en la request
-      req.user = user;
+      req.user = user; // Esto es perfecto, aquí se guardará id_usuario
       next();
     });
 
   } catch (error) {
-    res.status(500).json({ 
+    return res.status(500).json({ 
       success: false, 
       message: 'Error al verificar el token' 
     });
   }
 };
 
-module.exports = { authenticateToken };
+// Exportamos con el nombre correcto
+module.exports = { verifyToken };

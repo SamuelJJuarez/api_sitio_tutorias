@@ -54,7 +54,49 @@ const register = async (req, res) => {
   }
 };
 
+const getGruposRecientesPorCarrera = async (req, res) => {
+  try {
+    const { carrera } = req.query; // Recibimos ?carrera=Sistemas
+
+    if (!carrera) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'El parámetro carrera es obligatorio' 
+      });
+    }
+
+    // LÓGICA DE NEGOCIO:
+    // 1. Buscamos cuál es el 'periodo' más nuevo registrado en la base de datos.
+    // 2. Filtramos los grupos que sean de ese periodo y de la carrera solicitada.
+    // Nota: Usamos '?' para sanitizar la entrada y evitar inyección SQL.
+    const query = `
+      SELECT * FROM grupos 
+      WHERE carrera = ? 
+      AND periodo = (
+          SELECT periodo FROM grupos 
+          ORDER BY indice_grupo DESC 
+          LIMIT 1
+      )
+    `;
+
+    const [grupos] = await pool.query(query, [carrera]);
+
+    res.status(200).json({
+      success: true,
+      data: grupos
+    });
+
+  } catch (error) {
+    console.error('Error al obtener grupos:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Error interno al obtener los grupos',
+      error: error.message 
+    });
+  }
+};
 
 module.exports = {
-  register
+  register,
+  getGruposRecientesPorCarrera
 };

@@ -61,10 +61,10 @@ const register = async (req, res) => {
 // Inicio de sesión
 const login = async (req, res) => {
   try {
-    const { correo, contrasena } = req.body;
+    const { correo, contraseña } = req.body;
 
     // Validar datos de entrada
-    if (!correo || !contrasena) {
+    if (!correo || !contraseña) {
       return res.status(400).json({ 
         success: false, 
         message: 'El correo y la contraseña son obligatorios' 
@@ -87,7 +87,7 @@ const login = async (req, res) => {
     const user = users[0];
 
     // Verificar contraseña
-    const isPasswordValid = await bcrypt.compare(contrasena, user.contrasena);
+    const isPasswordValid = await bcrypt.compare(contraseña, user.contrasena);
 
     if (!isPasswordValid) {
       return res.status(401).json({ 
@@ -175,9 +175,150 @@ const verifyToken = async (req, res) => {
   }
 };
 
+const { sendEmail } = require('../config/mailer');
+
+// 1. Obtener grupos del profesor
+const getGrupos = async (req, res) => {
+  try {
+    const num_control_prof = req.user.id_usuario;
+    const query = `
+      SELECT indice_grupo, letra_grupo, periodo 
+      FROM grupos 
+      WHERE num_control_prof = ? 
+      ORDER BY periodo DESC, letra_grupo ASC
+    `;
+    const [grupos] = await pool.query(query, [num_control_prof]);
+    res.json({ success: true, data: grupos });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error al obtener grupos' });
+  }
+};
+
+// 2. Obtener alumnos de un grupo específico
+const getAlumnosPorGrupo = async (req, res) => {
+  try {
+    const { indice_grupo } = req.params;
+    // Traemos datos básicos y correo para el contacto
+    const query = `
+      SELECT num_control_alum, nombre, apellidoP, apellidoM, correo 
+      FROM alumnos 
+      WHERE indice_grupo = ?
+      ORDER BY apellidoP ASC
+    `;
+    const [alumnos] = await pool.query(query, [indice_grupo]);
+    res.json({ success: true, data: alumnos });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error al obtener alumnos' });
+  }
+};
+
+// 3. Obtener entrevistas de un alumno con este profesor
+const getEntrevistasAlumno = async (req, res) => {
+  try {
+    const { num_control_alum } = req.params;
+    const num_control_prof = req.user.id_usuario;
+
+    const query = `
+      SELECT * FROM entrevistas 
+      WHERE num_control_alum = ? AND num_control_prof = ?
+      ORDER BY fecha DESC, hora DESC
+    `;
+    const [entrevistas] = await pool.query(query, [num_control_alum, num_control_prof]);
+    res.json({ success: true, data: entrevistas });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error cargando entrevistas' });
+  }
+};
+
+// 4. Crear Entrevista (Con envío de correo)
+const createEntrevista = async (req, res) => {
+  try {
+    const num_control_prof = req.user.id_usuario;
+    const { num_control_alum, fecha, hora, lugar } = req.body;
+
+    // a) Insertar entrevista (resumen inicia vacío o NULL)
+    await pool.query(
+      'INSERT INTO entrevistas (fecha, hora, lugar, num_control_alum, num_control_prof) VALUES (?, ?, ?, ?, ?)',
+      [fecha, hora, lugar, num_control_alum, num_control_prof]
+    );
+
+    // b) Obtener correo del alumno para notificar
+    const [alumData] = await pool.query('SELECT correo, nombre FROM alumnos WHERE num_control_alum = ?', [num_control_alum]);
+    
+    if (alumData.length > 0) {
+      const { correo, nombre } = alumData[0];
+      const html = `
+        <h3>Hola ${nombre},</h3>
+        <p>Se ha programado una nueva entrevista de tutoría.</p>
+        <ul>
+            <li><b>Fecha:</b> ${fecha}</li>
+            <li><b>Hora:</b> ${hora}</li>
+            <li><b>Lugar:</b> ${lugar}</li>
+        </ul>
+        <p>Favor de asistir puntualmente.</p>
+      `;
+      await sendEmail(correo, 'Nueva Entrevista Programada - Tutorías ITL', html);
+    }
+
+    res.json({ success: true, message: 'Entrevista creada y notificada' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Error al crear entrevista' });
+  }
+};
+
+// 5. Editar Resumen (Solo modifica el campo resumen)
+const updateResumen = async (req, res) => {
+  try {
+    const { id_entrevista, resumen } = req.body;
+    await pool.query('UPDATE entrevistas SET resumen = ? WHERE id_entrevista = ?', [resumen, id_entrevista]);
+    res.json({ success: true, message: 'Resumen actualizado' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error actualizando resumen' });
+  }
+};
+
+// 6. Reprogramar Entrevista (Modifica fecha/hora/lugar y avisa por correo)
+const reprogramarEntrevista = async (req, res) => {
+  try {
+    const { id_entrevista, fecha, hora, lugar, num_control_alum } = req.body;
+
+    await pool.query(
+      'UPDATE entrevistas SET fecha = ?, hora = ?, lugar = ? WHERE id_entrevista = ?',
+      [fecha, hora, lugar, id_entrevista]
+    );
+
+    // Notificar cambio
+    const [alumData] = await pool.query('SELECT correo, nombre FROM alumnos WHERE num_control_alum = ?', [num_control_alum]);
+    if (alumData.length > 0) {
+        const { correo, nombre } = alumData[0];
+        const html = `
+          <h3>Hola ${nombre},</h3>
+          <p>Tu entrevista de tutoría ha sido <b>reprogramada</b>.</p>
+          <ul>
+              <li><b>Nueva Fecha:</b> ${fecha}</li>
+              <li><b>Nueva Hora:</b> ${hora}</li>
+              <li><b>Nuevo Lugar:</b> ${lugar}</li>
+          </ul>
+        `;
+        await sendEmail(correo, 'Cambio de Horario Entrevista - Tutorías ITL', html);
+    }
+
+    res.json({ success: true, message: 'Entrevista reprogramada' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error reprogramando' });
+  }
+};
+
 module.exports = {
   register,
   login,
   logout,
-  verifyToken
+  verifyToken,
+  getGrupos,
+  getAlumnosPorGrupo,
+  getEntrevistasAlumno,
+  createEntrevista,
+  updateResumen,
+  reprogramarEntrevista
 };

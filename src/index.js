@@ -7,6 +7,7 @@ const alumnoRoutes = require('./routes/alumnoRoutes');
 const grupoRoutes = require('./routes/grupoRoutes');
 const maestroRoutes = require('./routes/maestroRoutes');
 const administrativoRoutes = require('./routes/administrativoRoutes');
+const cuestionarioRoutes = require('./routes/cuestionarioRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,10 +27,11 @@ app.get('/', (req, res) => {
 });
 
 // Rutas
-app.use('/api/alumno', alumnoRoutes);
-app.use('/api/grupo', grupoRoutes);
-app.use('/api/maestro', maestroRoutes);
-app.use('/api/administrativo', administrativoRoutes);
+app.use('/api/alumnos', alumnoRoutes);
+app.use('/api/grupos', grupoRoutes);
+app.use('/api/maestros', maestroRoutes);
+app.use('/api/administrativos', administrativoRoutes);
+app.use('/api/cuestionario', cuestionarioRoutes);
 
 // Manejo de rutas no encontradas
 app.use((req, res) => {

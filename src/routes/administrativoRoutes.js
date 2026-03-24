@@ -11,4 +11,10 @@ router.post('/login', administrativoController.login);
 router.post('/logout', verifyToken, administrativoController.logout);
 router.get('/verify', administrativoController.verifyToken);
 
+// Rutas de resultados y filtros (todas protegidas)
+router.get('/filtros', verifyToken, administrativoController.getCarrerasYPeriodos);
+router.get('/grupos', verifyToken, administrativoController.getGruposPorCarreraYPeriodo);
+router.get('/resultados/generales', verifyToken, administrativoController.getResultadosGenerales);
+router.get('/resultados/grupo', verifyToken, administrativoController.getResultadosPorGrupo);
+
 module.exports = router;

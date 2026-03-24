@@ -1,18 +1,18 @@
 const nodemailer = require('nodemailer');
 
-// Configuración del transporte (Usando Gmail como ejemplo)
+// Configuración del transporte 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'tucorreo@gmail.com', // <--- CAMBIA ESTO POR TU CORREO REAL
-    pass: 'tu_contraseña_de_aplicacion' // <--- CAMBIA ESTO (App Password)
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
   }
 });
 
 const sendEmail = async (to, subject, htmlContent) => {
   try {
     await transporter.sendMail({
-      from: '"Sistema de Tutorías ITL" <tucorreo@gmail.com>',
+      from: `"Sistema de Tutorías ITL" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html: htmlContent

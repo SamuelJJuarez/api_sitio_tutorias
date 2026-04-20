@@ -16,10 +16,9 @@ const register = async (req, res) => {
     }
 
     // Verificar si el usuario ya existe
-    const [existingUser] = await pool.query(
-      'SELECT * FROM administrativo WHERE identificador_admin = ?',
-      [identificador_admin]
-    );
+    const existingUser = await pool`
+      SELECT * FROM administrativo WHERE identificador_admin = ${identificador_admin}
+    `;
 
     if (existingUser.length > 0) {
       return res.status(409).json({ 
@@ -33,11 +32,10 @@ const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
 
     // Insertar usuario en la base de datos
-    const [result] = await pool.query(
-      'Insert into administrativo (identificador_admin, nombre, apellidoP, apellidoM, correo, contrasena) values (?,?,?,?,?,?)',
-      [identificador_admin, nombre, apellidoP, apellidoM, correo, hashedPassword]
-    );
-    
+    await pool`
+      INSERT INTO administrativo (identificador_admin, nombre, "apellidoP", "apellidoM", correo, contrasena)
+      VALUES (${identificador_admin}, ${nombre}, ${apellidoP}, ${apellidoM}, ${correo}, ${hashedPassword})
+    `;
 
     res.status(201).json({
       success: true,
@@ -72,10 +70,9 @@ const login = async (req, res) => {
     }
 
     // Buscar usuario en la base de datos
-    const [users] = await pool.query(
-      'SELECT * FROM administrativo WHERE correo = ?',
-      [correo]
-    );
+    const users = await pool`
+      SELECT * FROM administrativo WHERE correo = ${correo}
+    `;
 
     if (users.length === 0) {
       return res.status(401).json({ 
@@ -182,14 +179,12 @@ const buildFrecuencias = async (numControles) => {
   if (!numControles || numControles.length === 0) return [];
 
   // 1. Traer todas las secciones
-  const [secciones] = await pool.query('SELECT * FROM secciones_cuestionario ORDER BY id_seccion ASC');
+  const secciones = await pool`SELECT * FROM secciones_cuestionario ORDER BY id_seccion ASC`;
 
   // 2. Traer todas las respuestas guardadas de los alumnos en cuestión
-  const placeholders = numControles.map(() => '?').join(',');
-  const [respuestasRows] = await pool.query(
-    `SELECT * FROM alumnos_secciones WHERE num_control_alum IN (${placeholders})`,
-    numControles
-  );
+  const respuestasRows = await pool`
+    SELECT * FROM alumnos_secciones WHERE num_control_alum IN ${pool(numControles)}
+  `;
 
   // 3. Procesar por sección
   const resultado = await Promise.all(secciones.map(async (sec) => {
@@ -198,20 +193,20 @@ const buildFrecuencias = async (numControles) => {
     if (respuestasSec.length === 0) return null;
 
     // Preguntas de la sección
-    const [preguntas] = await pool.query(
-      'SELECT id_pregunta, pregunta FROM preguntas WHERE id_seccion = ? ORDER BY id_pregunta ASC',
-      [sec.id_seccion]
-    );
+    const preguntas = await pool`
+      SELECT id_pregunta, pregunta FROM preguntas 
+      WHERE id_seccion = ${sec.id_seccion} ORDER BY id_pregunta ASC
+    `;
 
     // Todas las opciones posibles de la sección, incluyendo id_pregunta para filtrar correctamente
-    const [opcionesTextos] = await pool.query(`
+    const opcionesTextos = await pool`
       SELECT p.id_pregunta, o.id_opcion, o.opcion
       FROM opciones o
       JOIN respuestas r ON o.id_respuesta = r.id_respuesta
       JOIN preguntas p ON r.id_pregunta = p.id_pregunta
-      WHERE p.id_seccion = ?
+      WHERE p.id_seccion = ${sec.id_seccion}
       ORDER BY p.id_pregunta ASC, o.id_opcion ASC
-    `, [sec.id_seccion]);
+    `;
 
     // Construir conteos: { id_pregunta: { id_opcion: cantidad } }
     const conteos = {};
@@ -259,8 +254,8 @@ const buildFrecuencias = async (numControles) => {
 // GET /api/administrativos/filtros
 const getCarrerasYPeriodos = async (req, res) => {
   try {
-    const [carreras] = await pool.query('SELECT DISTINCT carrera FROM grupos ORDER BY carrera ASC');
-    const [periodos] = await pool.query('SELECT DISTINCT periodo FROM grupos ORDER BY periodo DESC');
+    const carreras = await pool`SELECT DISTINCT carrera FROM grupos ORDER BY carrera ASC`;
+    const periodos = await pool`SELECT DISTINCT periodo FROM grupos ORDER BY periodo DESC`;
 
     res.status(200).json({
       success: true,
@@ -285,10 +280,11 @@ const getGruposPorCarreraYPeriodo = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Los parámetros carrera y periodo son obligatorios' });
     }
 
-    const [grupos] = await pool.query(
-      'SELECT indice_grupo, letra_grupo, periodo FROM grupos WHERE carrera = ? AND periodo = ? ORDER BY letra_grupo ASC',
-      [carrera, periodo]
-    );
+    const grupos = await pool`
+      SELECT indice_grupo, letra_grupo, periodo FROM grupos 
+      WHERE carrera = ${carrera} AND periodo = ${periodo} 
+      ORDER BY letra_grupo ASC
+    `;
 
     res.status(200).json({ success: true, data: grupos });
   } catch (error) {
@@ -308,23 +304,20 @@ const getResultadosGenerales = async (req, res) => {
     }
 
     // Obtener todos los grupos del filtro
-    const [grupos] = await pool.query(
-      'SELECT indice_grupo FROM grupos WHERE carrera = ? AND periodo = ?',
-      [carrera, periodo]
-    );
+    const grupos = await pool`
+      SELECT indice_grupo FROM grupos WHERE carrera = ${carrera} AND periodo = ${periodo}
+    `;
 
     if (grupos.length === 0) {
       return res.status(200).json({ success: true, data: [] });
     }
 
     const indicesGrupo = grupos.map(g => g.indice_grupo);
-    const placeholders = indicesGrupo.map(() => '?').join(',');
 
     // Obtener todos los alumnos de esos grupos
-    const [alumnos] = await pool.query(
-      `SELECT num_control_alum FROM alumnos WHERE indice_grupo IN (${placeholders})`,
-      indicesGrupo
-    );
+    const alumnos = await pool`
+      SELECT num_control_alum FROM alumnos WHERE indice_grupo IN ${pool(indicesGrupo)}
+    `;
 
     if (alumnos.length === 0) {
       return res.status(200).json({ success: true, data: [] });
@@ -351,20 +344,19 @@ const getResultadosPorGrupo = async (req, res) => {
     }
 
     // Verificar que el grupo exista y pertenezca al filtro
-    const [grupoCheck] = await pool.query(
-      'SELECT indice_grupo FROM grupos WHERE indice_grupo = ? AND carrera = ? AND periodo = ?',
-      [indice_grupo, carrera, periodo]
-    );
+    const grupoCheck = await pool`
+      SELECT indice_grupo FROM grupos 
+      WHERE indice_grupo = ${indice_grupo} AND carrera = ${carrera} AND periodo = ${periodo}
+    `;
 
     if (grupoCheck.length === 0) {
       return res.status(404).json({ success: false, message: 'Grupo no encontrado con los filtros indicados' });
     }
 
     // Obtener alumnos del grupo
-    const [alumnos] = await pool.query(
-      'SELECT num_control_alum FROM alumnos WHERE indice_grupo = ?',
-      [indice_grupo]
-    );
+    const alumnos = await pool`
+      SELECT num_control_alum FROM alumnos WHERE indice_grupo = ${indice_grupo}
+    `;
 
     if (alumnos.length === 0) {
       return res.status(200).json({ success: true, data: [] });

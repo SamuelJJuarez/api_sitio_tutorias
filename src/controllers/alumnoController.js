@@ -16,10 +16,9 @@ const register = async (req, res) => {
     }
 
     // Verificar si el usuario ya existe
-    const [existingUser] = await pool.query(
-      'SELECT * FROM alumnos WHERE num_control_alum = ?',
-      [num_control_alum]
-    );
+    const existingUser = await pool`
+      SELECT * FROM alumnos WHERE num_control_alum = ${num_control_alum}
+    `;
 
     if (existingUser.length > 0) {
       return res.status(409).json({ 
@@ -33,11 +32,10 @@ const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
 
     // Insertar usuario en la base de datos
-    const [result] = await pool.query(
-      'Insert into alumnos (num_control_alum, nombre, apellidoP, apellidoM, semestre, correo, contrasena, estado_civil, carrera, indice_grupo) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [num_control_alum, nombre, apellidoP, apellidoM, semestre, correo, hashedPassword, estado_civil, carrera, indice_grupo]
-    );
-    
+    await pool`
+      INSERT INTO alumnos (num_control_alum, nombre, "apellidoP", "apellidoM", semestre, correo, contrasena, estado_civil, carrera, indice_grupo)
+      VALUES (${num_control_alum}, ${nombre}, ${apellidoP}, ${apellidoM}, ${semestre}, ${correo}, ${hashedPassword}, ${estado_civil}, ${carrera}, ${indice_grupo})
+    `;
 
     res.status(201).json({
       success: true,
@@ -72,10 +70,9 @@ const login = async (req, res) => {
     }
 
     // Buscar usuario en la base de datos
-    const [users] = await pool.query(
-      'SELECT * FROM alumnos WHERE correo = ?',
-      [correo]
-    );
+    const users = await pool`
+      SELECT * FROM alumnos WHERE correo = ${correo}
+    `;
 
     if (users.length === 0) {
       return res.status(401).json({ 

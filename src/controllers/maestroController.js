@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
+const { sendEmail } = require('../config/mailer');
 
 // Registro de usuario
 const register = async (req, res) => {
@@ -16,10 +17,9 @@ const register = async (req, res) => {
     }
 
     // Verificar si el usuario ya existe
-    const [existingUser] = await pool.query(
-      'SELECT * FROM profesores WHERE num_control_prof = ?',
-      [num_control_prof]
-    );
+    const existingUser = await pool`
+      SELECT * FROM profesores WHERE num_control_prof = ${num_control_prof}
+    `;
 
     if (existingUser.length > 0) {
       return res.status(409).json({ 
@@ -33,11 +33,10 @@ const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
 
     // Insertar usuario en la base de datos
-    const [result] = await pool.query(
-      'Insert into profesores (num_control_prof, nombre, apellidoP, apellidoM, correo, contrasena) values (?,?,?,?,?,?)',
-      [num_control_prof, nombre, apellidoP, apellidoM, correo, hashedPassword]
-    );
-    
+    await pool`
+      INSERT INTO profesores (num_control_prof, nombre, "apellidoP", "apellidoM", correo, contrasena)
+      VALUES (${num_control_prof}, ${nombre}, ${apellidoP}, ${apellidoM}, ${correo}, ${hashedPassword})
+    `;
 
     res.status(201).json({
       success: true,
@@ -72,10 +71,9 @@ const login = async (req, res) => {
     }
 
     // Buscar usuario en la base de datos
-    const [users] = await pool.query(
-      'SELECT * FROM profesores WHERE correo = ?',
-      [correo]
-    );
+    const users = await pool`
+      SELECT * FROM profesores WHERE correo = ${correo}
+    `;
 
     if (users.length === 0) {
       return res.status(401).json({ 
@@ -175,19 +173,16 @@ const verifyToken = async (req, res) => {
   }
 };
 
-const { sendEmail } = require('../config/mailer');
-
 // 1. Obtener grupos del profesor
 const getGrupos = async (req, res) => {
   try {
     const num_control_prof = req.user.id_usuario;
-    const query = `
+    const grupos = await pool`
       SELECT indice_grupo, letra_grupo, periodo 
       FROM grupos 
-      WHERE num_control_prof = ? 
+      WHERE num_control_prof = ${num_control_prof}
       ORDER BY periodo DESC, letra_grupo ASC
     `;
-    const [grupos] = await pool.query(query, [num_control_prof]);
     res.json({ success: true, data: grupos });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error al obtener grupos' });
@@ -198,14 +193,12 @@ const getGrupos = async (req, res) => {
 const getAlumnosPorGrupo = async (req, res) => {
   try {
     const { indice_grupo } = req.params;
-    // Traemos datos básicos y correo para el contacto
-    const query = `
-      SELECT num_control_alum, nombre, apellidoP, apellidoM, correo 
+    const alumnos = await pool`
+      SELECT num_control_alum, nombre, "apellidoP", "apellidoM", correo 
       FROM alumnos 
-      WHERE indice_grupo = ?
-      ORDER BY apellidoP ASC
+      WHERE indice_grupo = ${indice_grupo}
+      ORDER BY "apellidoP" ASC
     `;
-    const [alumnos] = await pool.query(query, [indice_grupo]);
     res.json({ success: true, data: alumnos });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error al obtener alumnos' });
@@ -218,12 +211,11 @@ const getEntrevistasAlumno = async (req, res) => {
     const { num_control_alum } = req.params;
     const num_control_prof = req.user.id_usuario;
 
-    const query = `
+    const entrevistas = await pool`
       SELECT * FROM entrevistas 
-      WHERE num_control_alum = ? AND num_control_prof = ?
+      WHERE num_control_alum = ${num_control_alum} AND num_control_prof = ${num_control_prof}
       ORDER BY fecha DESC, hora DESC
     `;
-    const [entrevistas] = await pool.query(query, [num_control_alum, num_control_prof]);
     res.json({ success: true, data: entrevistas });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error cargando entrevistas' });
@@ -237,13 +229,15 @@ const createEntrevista = async (req, res) => {
     const { num_control_alum, fecha, hora, lugar } = req.body;
 
     // a) Insertar entrevista (resumen inicia vacío o NULL)
-    await pool.query(
-      'INSERT INTO entrevistas (fecha, hora, lugar, num_control_alum, num_control_prof) VALUES (?, ?, ?, ?, ?)',
-      [fecha, hora, lugar, num_control_alum, num_control_prof]
-    );
+    await pool`
+      INSERT INTO entrevistas (fecha, hora, lugar, num_control_alum, num_control_prof)
+      VALUES (${fecha}, ${hora}, ${lugar}, ${num_control_alum}, ${num_control_prof})
+    `;
 
     // b) Obtener correo del alumno para notificar
-    const [alumData] = await pool.query('SELECT correo, nombre FROM alumnos WHERE num_control_alum = ?', [num_control_alum]);
+    const alumData = await pool`
+      SELECT correo, nombre FROM alumnos WHERE num_control_alum = ${num_control_alum}
+    `;
     
     if (alumData.length > 0) {
       const { correo, nombre } = alumData[0];
@@ -271,7 +265,9 @@ const createEntrevista = async (req, res) => {
 const updateResumen = async (req, res) => {
   try {
     const { id_entrevista, resumen } = req.body;
-    await pool.query('UPDATE entrevistas SET resumen = ? WHERE id_entrevista = ?', [resumen, id_entrevista]);
+    await pool`
+      UPDATE entrevistas SET resumen = ${resumen} WHERE id_entrevista = ${id_entrevista}
+    `;
     res.json({ success: true, message: 'Resumen actualizado' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Error actualizando resumen' });
@@ -283,13 +279,15 @@ const reprogramarEntrevista = async (req, res) => {
   try {
     const { id_entrevista, fecha, hora, lugar, num_control_alum } = req.body;
 
-    await pool.query(
-      'UPDATE entrevistas SET fecha = ?, hora = ?, lugar = ? WHERE id_entrevista = ?',
-      [fecha, hora, lugar, id_entrevista]
-    );
+    await pool`
+      UPDATE entrevistas SET fecha = ${fecha}, hora = ${hora}, lugar = ${lugar}
+      WHERE id_entrevista = ${id_entrevista}
+    `;
 
     // Notificar cambio
-    const [alumData] = await pool.query('SELECT correo, nombre FROM alumnos WHERE num_control_alum = ?', [num_control_alum]);
+    const alumData = await pool`
+      SELECT correo, nombre FROM alumnos WHERE num_control_alum = ${num_control_alum}
+    `;
     if (alumData.length > 0) {
         const { correo, nombre } = alumData[0];
         const html = `
@@ -314,7 +312,7 @@ const reprogramarEntrevista = async (req, res) => {
 const deleteEntrevista = async (req, res) => {
   try {
     const { id_entrevista } = req.params;
-    await pool.query('DELETE FROM entrevistas WHERE id_entrevista = ?', [id_entrevista]);
+    await pool`DELETE FROM entrevistas WHERE id_entrevista = ${id_entrevista}`;
     res.json({ success: true, message: 'Entrevista eliminada correctamente' });
   } catch (error) {
     console.error(error);

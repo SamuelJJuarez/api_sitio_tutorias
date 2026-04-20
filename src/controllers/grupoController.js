@@ -14,10 +14,11 @@ const register = async (req, res) => {
     }
 
     // Verificar si el grupo ya existe
-    const [existingGroup] = await pool.query(
-      'SELECT * FROM grupos WHERE letra_grupo = ? AND periodo = ? AND carrera = ? AND num_control_prof = ?',
-      [letra_grupo, periodo, carrera, num_control_prof]
-    );
+    const existingGroup = await pool`
+      SELECT * FROM grupos 
+      WHERE letra_grupo = ${letra_grupo} AND periodo = ${periodo} 
+        AND carrera = ${carrera} AND num_control_prof = ${num_control_prof}
+    `;
 
     if (existingGroup.length > 0) {
       return res.status(409).json({ 
@@ -26,12 +27,11 @@ const register = async (req, res) => {
       });
     }
 
-    // Insertar usuario en la base de datos
-    const [result] = await pool.query(
-      'INSERT INTO grupos (letra_grupo, periodo, carrera, num_control_prof) VALUES (?, ?, ?, ?)',
-      [letra_grupo, periodo, carrera, num_control_prof]
-    );
-    
+    // Insertar grupo en la base de datos
+    await pool`
+      INSERT INTO grupos (letra_grupo, periodo, carrera, num_control_prof)
+      VALUES (${letra_grupo}, ${periodo}, ${carrera}, ${num_control_prof})
+    `;
 
     res.status(201).json({
       success: true,
@@ -68,18 +68,15 @@ const getGruposRecientesPorCarrera = async (req, res) => {
     // LÓGICA DE NEGOCIO:
     // 1. Buscamos cuál es el 'periodo' más nuevo registrado en la base de datos.
     // 2. Filtramos los grupos que sean de ese periodo y de la carrera solicitada.
-    // Nota: Usamos '?' para sanitizar la entrada y evitar inyección SQL.
-    const query = `
+    const grupos = await pool`
       SELECT * FROM grupos 
-      WHERE carrera = ? 
+      WHERE carrera = ${carrera}
       AND periodo = (
           SELECT periodo FROM grupos 
           ORDER BY indice_grupo DESC 
           LIMIT 1
       )
     `;
-
-    const [grupos] = await pool.query(query, [carrera]);
 
     res.status(200).json({
       success: true,

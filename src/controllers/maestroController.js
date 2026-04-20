@@ -99,7 +99,7 @@ const login = async (req, res) => {
     // Generar token JWT
     const token = jwt.sign(
       { 
-        id_usuario: user.correo, 
+        id_usuario: user.num_control_prof, 
         nombre: user.nombre 
       },
       process.env.JWT_SECRET,
@@ -112,7 +112,7 @@ const login = async (req, res) => {
       data: {
         token: token,
         usuario: {
-          id_usuario: user.correo,
+          id_usuario: user.num_control_prof,
           nombre: user.nombre
         }
       }
@@ -310,6 +310,18 @@ const reprogramarEntrevista = async (req, res) => {
   }
 };
 
+// 7. Eliminar Entrevista
+const deleteEntrevista = async (req, res) => {
+  try {
+    const { id_entrevista } = req.params;
+    await pool.query('DELETE FROM entrevistas WHERE id_entrevista = ?', [id_entrevista]);
+    res.json({ success: true, message: 'Entrevista eliminada correctamente' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: 'Error al eliminar la entrevista' });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -320,5 +332,6 @@ module.exports = {
   getEntrevistasAlumno,
   createEntrevista,
   updateResumen,
-  reprogramarEntrevista
+  reprogramarEntrevista,
+  deleteEntrevista
 };

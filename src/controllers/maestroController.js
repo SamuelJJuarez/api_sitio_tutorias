@@ -2,14 +2,17 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
 const { sendEmail } = require('../config/mailer');
+const crypto = require('crypto');
+const pendingRegistrations = require('../utils/emailStore');
+const { sendVerificationEmail } = require('../utils/emailService');
 
 // Registro de usuario
 const register = async (req, res) => {
   try {
-    const { num_control_prof, nombre, apellidoP, apellidoM, correo, contrasena } = req.body;
+    const { num_control_prof, nombre, apellidoP, apellidoM, correo, contrasena, frontendUrl } = req.body;
 
     // Validar datos de entrada
-    if (!num_control_prof || !nombre || !apellidoP || !apellidoM || !correo || !contrasena) {
+    if (!num_control_prof || !nombre || !apellidoP || !apellidoM || !correo || !contrasena || !frontendUrl) {
       return res.status(400).json({ 
         success: false, 
         message: 'Los campos son obligatorios' 
@@ -32,19 +35,32 @@ const register = async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
 
-    // Insertar usuario en la base de datos
-    await pool`
-      INSERT INTO profesores (num_control_prof, nombre, "apellidoP", "apellidoM", correo, contrasena)
-      VALUES (${num_control_prof}, ${nombre}, ${apellidoP}, ${apellidoM}, ${correo}, ${hashedPassword})
-    `;
+    const registroId = crypto.randomUUID();
+    
+    // Generar token JWT con 10 mins de expiración
+    const token = jwt.sign(
+      { 
+        registroId,
+        tipo: 'maestro',
+        formData: req.body,
+        hashedPassword
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '10m' }
+    );
 
-    res.status(201).json({
+    // Guardar en el store temporal
+    pendingRegistrations.set(registroId, 'pending');
+
+    // Enviar el correo
+    const link = `${frontendUrl}/verificar-correo?token=${token}`;
+    await sendVerificationEmail(correo, link);
+
+    res.status(200).json({
       success: true,
-      message: 'Profesor registrado exitosamente',
-      data: {
-        num_control_prof: num_control_prof,
-        nombre: nombre + ' ' + apellidoP + ' ' + apellidoM
-      }
+      message: 'Correo de verificación enviado',
+      status: 'pending',
+      registroId: registroId
     });
 
   } catch (error) {

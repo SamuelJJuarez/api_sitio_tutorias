@@ -1,14 +1,17 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
+const crypto = require('crypto');
+const pendingRegistrations = require('../utils/emailStore');
+const { sendVerificationEmail } = require('../utils/emailService');
 
 // Registro de usuario
 const register = async (req, res) => {
   try {
-    const { num_control_alum, nombre, apellidoP, apellidoM, semestre, correo, contrasena, estado_civil, carrera, indice_grupo } = req.body;
+    const { num_control_alum, nombre, apellidoP, apellidoM, semestre, correo, contrasena, estado_civil, carrera, indice_grupo, frontendUrl } = req.body;
 
     // Validar datos de entrada
-    if (!nombre || !contrasena || !num_control_alum || !apellidoP || !apellidoM || !semestre || !correo || !estado_civil || !carrera || !indice_grupo) {
+    if (!nombre || !contrasena || !num_control_alum || !apellidoP || !apellidoM || !semestre || !correo || !estado_civil || !carrera || !indice_grupo || !frontendUrl) {
       return res.status(400).json({ 
         success: false, 
         message: 'Los campos son obligatorios' 
@@ -31,19 +34,32 @@ const register = async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
 
-    // Insertar usuario en la base de datos
-    await pool`
-      INSERT INTO alumnos (num_control_alum, nombre, "apellidoP", "apellidoM", semestre, correo, contrasena, estado_civil, carrera, indice_grupo)
-      VALUES (${num_control_alum}, ${nombre}, ${apellidoP}, ${apellidoM}, ${semestre}, ${correo}, ${hashedPassword}, ${estado_civil}, ${carrera}, ${indice_grupo})
-    `;
+    const registroId = crypto.randomUUID();
+    
+    // Generar token JWT con 10 mins de expiración
+    const token = jwt.sign(
+      { 
+        registroId,
+        tipo: 'alumno',
+        formData: req.body,
+        hashedPassword
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '10m' }
+    );
 
-    res.status(201).json({
+    // Guardar en el store temporal
+    pendingRegistrations.set(registroId, 'pending');
+
+    // Enviar el correo
+    const link = `${frontendUrl}/verificar-correo?token=${token}`;
+    await sendVerificationEmail(correo, link);
+
+    res.status(200).json({
       success: true,
-      message: 'Alumno registrado exitosamente',
-      data: {
-        num_control_alum: num_control_alum,
-        nombre: nombre + ' ' + apellidoP + ' ' + apellidoM
-      }
+      message: 'Correo de verificación enviado',
+      status: 'pending',
+      registroId: registroId
     });
 
   } catch (error) {

@@ -1,14 +1,17 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool } = require('../config/database');
+const crypto = require('crypto');
+const pendingRegistrations = require('../utils/emailStore');
+const { sendVerificationEmail } = require('../utils/emailService');
 
 // Registro de usuario
 const register = async (req, res) => {
   try {
-    const { identificador_admin, nombre, apellidoP, apellidoM, correo, contrasena } = req.body;
+    const { identificador_admin, nombre, apellidoP, apellidoM, correo, contrasena, frontendUrl } = req.body;
 
     // Validar datos de entrada
-    if (!nombre || !contrasena || !identificador_admin || !apellidoP || !apellidoM || !correo ) {
+    if (!nombre || !contrasena || !identificador_admin || !apellidoP || !apellidoM || !correo || !frontendUrl) {
       return res.status(400).json({ 
         success: false, 
         message: 'Los campos son obligatorios' 
@@ -31,19 +34,32 @@ const register = async (req, res) => {
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
 
-    // Insertar usuario en la base de datos
-    await pool`
-      INSERT INTO administrativo (identificador_admin, nombre, "apellidoP", "apellidoM", correo, contrasena)
-      VALUES (${identificador_admin}, ${nombre}, ${apellidoP}, ${apellidoM}, ${correo}, ${hashedPassword})
-    `;
+    const registroId = crypto.randomUUID();
+    
+    // Generar token JWT con 10 mins de expiración
+    const token = jwt.sign(
+      { 
+        registroId,
+        tipo: 'administrativo',
+        formData: req.body,
+        hashedPassword
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '10m' }
+    );
 
-    res.status(201).json({
+    // Guardar en el store temporal
+    pendingRegistrations.set(registroId, 'pending');
+
+    // Enviar el correo
+    const link = `${frontendUrl}/verificar-correo?token=${token}`;
+    await sendVerificationEmail(correo, link);
+
+    res.status(200).json({
       success: true,
-      message: 'Administrativo registrado exitosamente',
-      data: {
-        administrativo: identificador_admin,
-        nombre: nombre + ' ' + apellidoP + ' ' + apellidoM
-      }
+      message: 'Correo de verificación enviado',
+      status: 'pending',
+      registroId: registroId
     });
 
   } catch (error) {

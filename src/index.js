@@ -9,6 +9,7 @@ const maestroRoutes = require('./routes/maestroRoutes');
 const administrativoRoutes = require('./routes/administrativoRoutes');
 const cuestionarioRoutes = require('./routes/cuestionarioRoutes');
 const verificacionRoutes = require('./routes/verificacionRoutes');
+const passwordRoutes = require('./routes/passwordRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,6 +35,7 @@ app.use('/api/maestros', maestroRoutes);
 app.use('/api/administrativos', administrativoRoutes);
 app.use('/api/cuestionario', cuestionarioRoutes);
 app.use('/api/verificacion', verificacionRoutes);
+app.use('/api/password', passwordRoutes);
 
 // Manejo de rutas no encontradas
 app.use((req, res) => {

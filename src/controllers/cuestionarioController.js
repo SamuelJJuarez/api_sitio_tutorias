@@ -108,8 +108,12 @@ const buildResultadosPorSeccion = async (respuestas, secciones) => {
 
     let respuestasDetalle = [];
     try {
-      // Intentamos parsear el JSON guardado
-      respuestasDetalle = JSON.parse(respuestaSeccion.contenido);
+      // Intentamos parsear el JSON guardado, removiendo escapes si existen
+      let rawContent = respuestaSeccion.contenido;
+      if (typeof rawContent === 'string' && rawContent.includes('\\"')) {
+        rawContent = rawContent.replace(/\\"/g, '"');
+      }
+      respuestasDetalle = JSON.parse(rawContent);
     } catch (e) {
       console.warn('El contenido en la BD no es un JSON válido para ID:', respuestaSeccion.num_control_alum);
       respuestasDetalle = [];

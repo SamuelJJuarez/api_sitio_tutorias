@@ -212,7 +212,13 @@ const buildFrecuencias = async (numControles) => {
     const conteos = {};
     for (const respRow of respuestasSec) {
       let detalle = [];
-      try { detalle = JSON.parse(respRow.contenido); } catch (e) { continue; }
+      try { 
+        let rawContent = respRow.contenido;
+        if (typeof rawContent === 'string' && rawContent.includes('\\"')) {
+          rawContent = rawContent.replace(/\\"/g, '"');
+        }
+        detalle = JSON.parse(rawContent); 
+      } catch (e) { continue; }
       for (const item of detalle) {
         const idP = parseInt(item.id_pregunta);
         const idO = item.id_opcion;

@@ -388,6 +388,55 @@ const getResultadosPorGrupo = async (req, res) => {
   }
 };
 
+// ─── 5. Obtener lista de maestros ──────────────────────────────────────
+// GET /api/administrativos/maestros
+const getMaestros = async (req, res) => {
+  try {
+    const maestros = await pool`
+      SELECT num_control_prof, nombre, "apellidoP", "apellidoM" 
+      FROM profesores 
+      ORDER BY nombre ASC
+    `;
+    res.status(200).json({ success: true, data: maestros });
+  } catch (error) {
+    console.error('Error al obtener maestros:', error);
+    res.status(500).json({ success: false, message: 'Error al obtener maestros' });
+  }
+};
+
+// ─── 6. Crear múltiples grupos ──────────────────────────────────────────
+// POST /api/administrativos/grupos/bulk
+const bulkCreateGrupos = async (req, res) => {
+  try {
+    const { grupos } = req.body;
+
+    if (!grupos || !Array.isArray(grupos) || grupos.length === 0) {
+      return res.status(400).json({ success: false, message: 'Debe proporcionar una lista de grupos' });
+    }
+
+    // Process each group one by one using a transaction if possible, or sequentially
+    // Since `postgres` uses template literals, we can do sequential inserts
+    for (const grupo of grupos) {
+      const { letra_grupo, periodo, carrera, num_control_prof } = grupo;
+      
+      // Basic validation for each group
+      if (!letra_grupo || !periodo || !carrera || !num_control_prof) {
+        return res.status(400).json({ success: false, message: 'Faltan datos en uno de los grupos a insertar' });
+      }
+
+      await pool`
+        INSERT INTO grupos (letra_grupo, periodo, carrera, num_control_prof)
+        VALUES (${letra_grupo}, ${periodo}, ${carrera}, ${num_control_prof})
+      `;
+    }
+
+    res.status(201).json({ success: true, message: 'Grupos creados exitosamente' });
+  } catch (error) {
+    console.error('Error al crear grupos en bulk:', error);
+    res.status(500).json({ success: false, message: 'Error al crear grupos', error: error.message });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -396,5 +445,7 @@ module.exports = {
   getCarrerasYPeriodos,
   getGruposPorCarreraYPeriodo,
   getResultadosGenerales,
-  getResultadosPorGrupo
+  getResultadosPorGrupo,
+  getMaestros,
+  bulkCreateGrupos
 };

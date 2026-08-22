@@ -13,9 +13,9 @@ const register = async (req, res) => {
 
     // Validar datos de entrada
     if (!num_control_prof || !nombre || !apellidoP || !apellidoM || !correo || !contrasena || !frontendUrl) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Los campos son obligatorios' 
+      return res.status(400).json({
+        success: false,
+        message: 'Los campos son obligatorios'
       });
     }
 
@@ -25,9 +25,9 @@ const register = async (req, res) => {
     `;
 
     if (existingUser.length > 0) {
-      return res.status(409).json({ 
-        success: false, 
-        message: 'El profesor ya está registrado' 
+      return res.status(409).json({
+        success: false,
+        message: 'El profesor ya está registrado'
       });
     }
 
@@ -36,10 +36,10 @@ const register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(contrasena, saltRounds);
 
     const registroId = crypto.randomUUID();
-    
+
     // Generar token JWT con 10 mins de expiración
     const token = jwt.sign(
-      { 
+      {
         registroId,
         tipo: 'maestro',
         formData: req.body,
@@ -65,10 +65,10 @@ const register = async (req, res) => {
 
   } catch (error) {
     console.error('Error en registro:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Error al registrar profesor',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -80,9 +80,9 @@ const login = async (req, res) => {
 
     // Validar datos de entrada
     if (!correo || !contraseña) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'El correo y la contraseña son obligatorios' 
+      return res.status(400).json({
+        success: false,
+        message: 'El correo y la contraseña son obligatorios'
       });
     }
 
@@ -92,9 +92,9 @@ const login = async (req, res) => {
     `;
 
     if (users.length === 0) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Credenciales incorrectas' 
+      return res.status(401).json({
+        success: false,
+        message: 'Credenciales incorrectas'
       });
     }
 
@@ -104,17 +104,17 @@ const login = async (req, res) => {
     const isPasswordValid = await bcrypt.compare(contraseña, user.contrasena);
 
     if (!isPasswordValid) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Credenciales incorrectas' 
+      return res.status(401).json({
+        success: false,
+        message: 'Credenciales incorrectas'
       });
     }
 
     // Generar token JWT
     const token = jwt.sign(
-      { 
-        id_usuario: user.num_control_prof, 
-        nombre: user.nombre 
+      {
+        id_usuario: user.num_control_prof,
+        nombre: user.nombre
       },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
@@ -134,10 +134,10 @@ const login = async (req, res) => {
 
   } catch (error) {
     console.error('Error en login:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Error al iniciar sesión',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -151,10 +151,10 @@ const logout = async (req, res) => {
     });
   } catch (error) {
     console.error('Error en logout:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       message: 'Error al cerrar sesión',
-      error: error.message 
+      error: error.message
     });
   }
 };
@@ -165,9 +165,9 @@ const verifyToken = async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
 
     if (!token) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Token no proporcionado' 
+      return res.status(401).json({
+        success: false,
+        message: 'Token no proporcionado'
       });
     }
 
@@ -182,9 +182,9 @@ const verifyToken = async (req, res) => {
     });
 
   } catch (error) {
-    res.status(401).json({ 
-      success: false, 
-      message: 'Token inválido o expirado' 
+    res.status(401).json({
+      success: false,
+      message: 'Token inválido o expirado'
     });
   }
 };
@@ -254,7 +254,7 @@ const createEntrevista = async (req, res) => {
     const alumData = await pool`
       SELECT correo, nombre FROM alumnos WHERE num_control_alum = ${num_control_alum}
     `;
-    
+
     if (alumData.length > 0) {
       const { correo, nombre } = alumData[0];
       const html = `
@@ -307,8 +307,8 @@ const reprogramarEntrevista = async (req, res) => {
       SELECT correo, nombre FROM alumnos WHERE num_control_alum = ${num_control_alum}
     `;
     if (alumData.length > 0) {
-        const { correo, nombre } = alumData[0];
-        const html = `
+      const { correo, nombre } = alumData[0];
+      const html = `
           <h3>Hola ${nombre},</h3>
           <p>Tu entrevista de tutoría ha sido <b>reprogramada</b>.</p>
           <ul>
@@ -317,7 +317,7 @@ const reprogramarEntrevista = async (req, res) => {
               <li><b>Nuevo Lugar:</b> ${lugar}</li>
           </ul>
         `;
-        await sendEmail(correo, 'Cambio de Horario Entrevista - Tutorías ITL', html);
+      await sendEmail(correo, 'Cambio de Horario Entrevista - Tutorías ITL', html);
     }
 
     res.json({ success: true, message: 'Entrevista reprogramada' });
@@ -370,7 +370,7 @@ const notificarCuestionario = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No hay alumnos registrados en este grupo' });
     }
 
-    const frontendUrl = process.env.FRONTEND_URL || 'https://sitio-tutorias.vercel.app';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://localhost:5173';
     const nombreTutor = `${grupo.nombre || ''} ${grupo.apellidoP || ''} ${grupo.apellidoM || ''}`.trim() || 'Tutor Asignado';
 
     // Enviar correos a cada alumno

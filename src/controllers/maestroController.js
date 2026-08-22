@@ -281,11 +281,13 @@ const createEntrevista = async (req, res) => {
 const updateResumen = async (req, res) => {
   try {
     const { id_entrevista, resumen } = req.body;
+    const resumenValor = resumen !== undefined && resumen !== null && resumen.trim() !== '' ? resumen.trim() : null;
     await pool`
-      UPDATE entrevistas SET resumen = ${resumen} WHERE id_entrevista = ${id_entrevista}
+      UPDATE entrevistas SET resumen = ${resumenValor} WHERE id_entrevista = ${id_entrevista}
     `;
     res.json({ success: true, message: 'Resumen actualizado' });
   } catch (error) {
+    console.error('Error actualizando resumen:', error);
     res.status(500).json({ success: false, message: 'Error actualizando resumen' });
   }
 };
@@ -336,6 +338,93 @@ const deleteEntrevista = async (req, res) => {
   }
 };
 
+// 6. Notificar a todos los alumnos de un grupo para que llenen su cuestionario
+const notificarCuestionario = async (req, res) => {
+  try {
+    const { indice_grupo } = req.params;
+    const num_control_prof = req.user.id_usuario;
+
+    // Verificar que el grupo pertenezca al maestro o exista
+    const grupoData = await pool`
+      SELECT g.indice_grupo, g.letra_grupo, g.periodo, g.carrera,
+             p.nombre, p."apellidoP", p."apellidoM"
+      FROM grupos g
+      LEFT JOIN profesores p ON g.num_control_prof = p.num_control_prof
+      WHERE g.indice_grupo = ${indice_grupo} AND g.num_control_prof = ${num_control_prof}
+    `;
+
+    if (grupoData.length === 0) {
+      return res.status(404).json({ success: false, message: 'Grupo no encontrado o no asignado a este docente' });
+    }
+
+    const grupo = grupoData[0];
+
+    // Obtener todos los alumnos del grupo
+    const alumnos = await pool`
+      SELECT num_control_alum, nombre, "apellidoP", "apellidoM", correo
+      FROM alumnos
+      WHERE indice_grupo = ${indice_grupo} AND correo IS NOT NULL
+    `;
+
+    if (alumnos.length === 0) {
+      return res.status(400).json({ success: false, message: 'No hay alumnos registrados en este grupo' });
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || 'https://sitio-tutorias.vercel.app';
+    const nombreTutor = `${grupo.nombre || ''} ${grupo.apellidoP || ''} ${grupo.apellidoM || ''}`.trim() || 'Tutor Asignado';
+
+    // Enviar correos a cada alumno
+    const emailPromises = alumnos.map(alum => {
+      const html = `
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 10px; background-color: #ffffff;">
+          <div style="text-align: center; border-bottom: 2px solid #1B396A; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="color: #1B396A; margin: 0; font-size: 22px;">Recordatorio: Llenado de Cuestionario Diagnóstico</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 5px 0 0 0;">Instituto Tecnológico de León • Sistema de Tutorías</p>
+          </div>
+          
+          <p style="font-size: 15px; color: #334155;">Hola <b>${alum.nombre} ${alum.apellidoP}</b>,</p>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            Se te recuerda que debes ingresar al Sistema de Tutorías y contestar en su totalidad el <b>cuestionario diagnóstico</b> correspondiente a tu periodo escolar.
+          </p>
+          
+          <div style="background-color: #f1f5f9; border-left: 4px solid #1B396A; padding: 12px 16px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; font-size: 13px; color: #1e293b;"><b>Grupo:</b> ${grupo.letra_grupo} &nbsp;|&nbsp; <b>Carrera:</b> ${grupo.carrera}</p>
+            <p style="margin: 4px 0 0 0; font-size: 13px; color: #1e293b;"><b>Periodo:</b> ${grupo.periodo}</p>
+            <p style="margin: 4px 0 0 0; font-size: 13px; color: #1e293b;"><b>Tutor:</b> ${nombreTutor}</p>
+          </div>
+          
+          <div style="text-align: center; margin: 25px 0;">
+            <a href="${frontendUrl}" style="background-color: #1B396A; color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block;">
+              Acceder al Sistema de Tutorías
+            </a>
+          </div>
+          
+          <div style="background-color: #fef9c3; border: 1px solid #fde047; border-radius: 6px; padding: 12px 16px; margin-top: 20px; color: #854d0e; font-size: 13px; line-height: 1.5;">
+            <strong>Nota:</strong> Si ya contestaste y concluiste tu cuestionario en su totalidad, por favor haz caso omiso a este correo.
+          </div>
+          
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin-top: 25px;" />
+          <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+            Este es un correo automático del Sistema de Tutorías del Instituto Tecnológico de León. Por favor no respondas a este mensaje.
+          </p>
+        </div>
+      `;
+
+      return sendEmail(alum.correo, 'Recordatorio: Llenado de Cuestionario - Tutorías ITL', html);
+    });
+
+    await Promise.allSettled(emailPromises);
+
+    res.json({
+      success: true,
+      message: `Se envió el recordatorio a los ${alumnos.length} alumno(s) del grupo.`
+    });
+  } catch (error) {
+    console.error('Error enviando notificaciones de cuestionario:', error);
+    res.status(500).json({ success: false, message: 'Error al enviar notificaciones' });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -347,5 +436,6 @@ module.exports = {
   createEntrevista,
   updateResumen,
   reprogramarEntrevista,
-  deleteEntrevista
+  deleteEntrevista,
+  notificarCuestionario
 };

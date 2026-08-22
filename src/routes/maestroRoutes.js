@@ -17,5 +17,6 @@ router.post('/entrevista', verifyToken, maestroController.createEntrevista);
 router.put('/entrevista/resumen', verifyToken, maestroController.updateResumen); // Editar Resumen
 router.put('/entrevista/reprogramar', verifyToken, maestroController.reprogramarEntrevista); // Reprogramar
 router.delete('/entrevista/:id_entrevista', verifyToken, maestroController.deleteEntrevista); // Eliminar
+router.post('/notificar-cuestionario/:indice_grupo', verifyToken, maestroController.notificarCuestionario); // Notificar Cuestionario
 
 module.exports = router;

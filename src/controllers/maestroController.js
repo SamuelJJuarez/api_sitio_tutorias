@@ -238,41 +238,77 @@ const getEntrevistasAlumno = async (req, res) => {
   }
 };
 
-// 4. Crear Entrevista (Con envío de correo)
+// 4. Crear Entrevista (Con envío de correo y botones de confirmación)
 const createEntrevista = async (req, res) => {
   try {
     const num_control_prof = req.user.id_usuario;
     const { num_control_alum, fecha, hora, lugar } = req.body;
+    const token_respuesta = crypto.randomUUID();
 
-    // a) Insertar entrevista (resumen inicia vacío o NULL)
+    // a) Insertar entrevista (resumen inicia vacío o NULL, estado pendiente y token único)
     await pool`
-      INSERT INTO entrevistas (fecha, hora, lugar, num_control_alum, num_control_prof)
-      VALUES (${fecha}, ${hora}, ${lugar}, ${num_control_alum}, ${num_control_prof})
+      INSERT INTO entrevistas (fecha, hora, lugar, num_control_alum, num_control_prof, estado, token_respuesta)
+      VALUES (${fecha}, ${hora}, ${lugar}, ${num_control_alum}, ${num_control_prof}, 'pendiente', ${token_respuesta})
     `;
 
-    // b) Obtener correo del alumno para notificar
+    // b) Obtener datos del alumno y del profesor para notificar
     const alumData = await pool`
-      SELECT correo, nombre FROM alumnos WHERE num_control_alum = ${num_control_alum}
+      SELECT correo, nombre, "apellidoP" FROM alumnos WHERE num_control_alum = ${num_control_alum}
+    `;
+    const profData = await pool`
+      SELECT nombre, "apellidoP", "apellidoM" FROM profesores WHERE num_control_prof = ${num_control_prof}
     `;
 
     if (alumData.length > 0) {
-      const { correo, nombre } = alumData[0];
+      const { correo, nombre, apellidoP } = alumData[0];
+      const tutorNombre = profData.length > 0 ? `${profData[0].nombre} ${profData[0].apellidoP} ${profData[0].apellidoM}` : 'Tu tutor';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://sitiotutorias.netlify.app';
+      const confirmUrl = `${frontendUrl}/responder-entrevista?token=${token_respuesta}&accion=confirmar`;
+      const rejectUrl = `${frontendUrl}/responder-entrevista?token=${token_respuesta}&accion=rechazar`;
+
       const html = `
-        <h3>Hola ${nombre},</h3>
-        <p>Se ha programado una nueva entrevista de tutoría.</p>
-        <ul>
-            <li><b>Fecha:</b> ${fecha}</li>
-            <li><b>Hora:</b> ${hora}</li>
-            <li><b>Lugar:</b> ${lugar}</li>
-        </ul>
-        <p>Favor de asistir puntualmente.</p>
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 10px; background-color: #ffffff;">
+          <div style="text-align: center; border-bottom: 2px solid #1B396A; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="color: #1B396A; margin: 0; font-size: 22px;">Nueva Entrevista de Tutoría Programada</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 5px 0 0 0;">Instituto Tecnológico de León • Sistema de Tutorías</p>
+          </div>
+          
+          <p style="font-size: 15px; color: #334155;">Hola <b>${nombre} ${apellidoP}</b>,</p>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            Tu tutor(a) <b>${tutorNombre}</b> ha programado una sesión de entrevista individual de tutoría contigo con los siguientes detalles:
+          </p>
+          
+          <div style="background-color: #f1f5f9; border-left: 4px solid #1B396A; padding: 15px 18px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; font-size: 14px; color: #1e293b;"><b>📅 Fecha:</b> ${fecha}</p>
+            <p style="margin: 6px 0 0 0; font-size: 14px; color: #1e293b;"><b>⏰ Hora:</b> ${hora}</p>
+            <p style="margin: 6px 0 0 0; font-size: 14px; color: #1e293b;"><b>📍 Lugar:</b> ${lugar}</p>
+          </div>
+          
+          <p style="font-size: 14px; color: #334155; font-weight: bold; margin-top: 25px; text-align: center;">
+            Por favor, confirma o indica si podrás asistir a la entrevista:
+          </p>
+
+          <div style="text-align: center; margin: 25px 0;">
+            <a href="${confirmUrl}" style="background-color: #16a34a; color: #ffffff; padding: 12px 22px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block; margin: 5px;">
+              ✓ Confirmar Asistencia
+            </a>
+            <a href="${rejectUrl}" style="background-color: #dc2626; color: #ffffff; padding: 12px 22px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block; margin: 5px;">
+              ✗ No Podré Asistir (Indicar Motivo)
+            </a>
+          </div>
+          
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin-top: 25px;" />
+          <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+            Sistema de Tutorías del Instituto Tecnológico de León.
+          </p>
+        </div>
       `;
       await sendEmail(correo, 'Nueva Entrevista Programada - Tutorías ITL', html);
     }
 
     res.json({ success: true, message: 'Entrevista creada y notificada' });
   } catch (error) {
-    console.error(error);
+    console.error('Error al crear entrevista:', error);
     res.status(500).json({ success: false, message: 'Error al crear entrevista' });
   }
 };
@@ -292,37 +328,79 @@ const updateResumen = async (req, res) => {
   }
 };
 
-// 6. Reprogramar Entrevista (Modifica fecha/hora/lugar y avisa por correo)
+// 6. Reprogramar Entrevista (Modifica fecha/hora/lugar, resetea estado y avisa por correo)
 const reprogramarEntrevista = async (req, res) => {
   try {
+    const num_control_prof = req.user.id_usuario;
     const { id_entrevista, fecha, hora, lugar, num_control_alum } = req.body;
+    const token_respuesta = crypto.randomUUID();
 
     await pool`
-      UPDATE entrevistas SET fecha = ${fecha}, hora = ${hora}, lugar = ${lugar}
+      UPDATE entrevistas 
+      SET fecha = ${fecha}, hora = ${hora}, lugar = ${lugar}, 
+          estado = 'pendiente', motivo_rechazo = NULL, token_respuesta = ${token_respuesta}
       WHERE id_entrevista = ${id_entrevista}
     `;
 
     // Notificar cambio
     const alumData = await pool`
-      SELECT correo, nombre FROM alumnos WHERE num_control_alum = ${num_control_alum}
+      SELECT correo, nombre, "apellidoP" FROM alumnos WHERE num_control_alum = ${num_control_alum}
     `;
+    const profData = await pool`
+      SELECT nombre, "apellidoP", "apellidoM" FROM profesores WHERE num_control_prof = ${num_control_prof}
+    `;
+
     if (alumData.length > 0) {
-      const { correo, nombre } = alumData[0];
+      const { correo, nombre, apellidoP } = alumData[0];
+      const tutorNombre = profData.length > 0 ? `${profData[0].nombre} ${profData[0].apellidoP} ${profData[0].apellidoM}` : 'Tu tutor';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://sitiotutorias.netlify.app';
+      const confirmUrl = `${frontendUrl}/responder-entrevista?token=${token_respuesta}&accion=confirmar`;
+      const rejectUrl = `${frontendUrl}/responder-entrevista?token=${token_respuesta}&accion=rechazar`;
+
       const html = `
-          <h3>Hola ${nombre},</h3>
-          <p>Tu entrevista de tutoría ha sido <b>reprogramada</b>.</p>
-          <ul>
-              <li><b>Nueva Fecha:</b> ${fecha}</li>
-              <li><b>Nueva Hora:</b> ${hora}</li>
-              <li><b>Nuevo Lugar:</b> ${lugar}</li>
-          </ul>
-        `;
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 25px; border: 1px solid #e2e8f0; border-radius: 10px; background-color: #ffffff;">
+          <div style="text-align: center; border-bottom: 2px solid #1B396A; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="color: #1B396A; margin: 0; font-size: 22px;">Entrevista de Tutoría Reprogramada</h2>
+            <p style="color: #64748b; font-size: 13px; margin: 5px 0 0 0;">Instituto Tecnológico de León • Sistema de Tutorías</p>
+          </div>
+          
+          <p style="font-size: 15px; color: #334155;">Hola <b>${nombre} ${apellidoP}</b>,</p>
+          <p style="font-size: 14px; color: #475569; line-height: 1.6;">
+            Tu tutor(a) <b>${tutorNombre}</b> ha reprogramado tu sesión de entrevista de tutoría con los siguientes nuevos datos:
+          </p>
+          
+          <div style="background-color: #f1f5f9; border-left: 4px solid #1B396A; padding: 15px 18px; margin: 20px 0; border-radius: 4px;">
+            <p style="margin: 0; font-size: 14px; color: #1e293b;"><b>📅 Nueva Fecha:</b> ${fecha}</p>
+            <p style="margin: 6px 0 0 0; font-size: 14px; color: #1e293b;"><b>⏰ Nueva Hora:</b> ${hora}</p>
+            <p style="margin: 6px 0 0 0; font-size: 14px; color: #1e293b;"><b>📍 Nuevo Lugar:</b> ${lugar}</p>
+          </div>
+          
+          <p style="font-size: 14px; color: #334155; font-weight: bold; margin-top: 25px; text-align: center;">
+            Por favor, confirma tu asistencia a este nuevo horario:
+          </p>
+
+          <div style="text-align: center; margin: 25px 0;">
+            <a href="${confirmUrl}" style="background-color: #16a34a; color: #ffffff; padding: 12px 22px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block; margin: 5px;">
+              ✓ Confirmar Asistencia
+            </a>
+            <a href="${rejectUrl}" style="background-color: #dc2626; color: #ffffff; padding: 12px 22px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; display: inline-block; margin: 5px;">
+              ✗ No Podré Asistir (Indicar Motivo)
+            </a>
+          </div>
+          
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin-top: 25px;" />
+          <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+            Sistema de Tutorías del Instituto Tecnológico de León.
+          </p>
+        </div>
+      `;
       await sendEmail(correo, 'Cambio de Horario Entrevista - Tutorías ITL', html);
     }
 
-    res.json({ success: true, message: 'Entrevista reprogramada' });
+    res.json({ success: true, message: 'Entrevista reprogramada y notificada' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Error reprogramando' });
+    console.error('Error reprogramando entrevista:', error);
+    res.status(500).json({ success: false, message: 'Error al reprogramar' });
   }
 };
 

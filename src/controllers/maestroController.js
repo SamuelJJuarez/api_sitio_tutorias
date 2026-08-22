@@ -370,7 +370,7 @@ const notificarCuestionario = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No hay alumnos registrados en este grupo' });
     }
 
-    const frontendUrl = process.env.FRONTEND_URL;
+    const frontendUrl = process.env.FRONTEND_URL || 'https://sitiotutorias.netlify.app';
     const nombreTutor = `${grupo.nombre || ''} ${grupo.apellidoP || ''} ${grupo.apellidoM || ''}`.trim() || 'Tutor Asignado';
 
     // Enviar correos a cada alumno

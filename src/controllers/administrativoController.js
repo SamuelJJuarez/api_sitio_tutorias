@@ -239,15 +239,26 @@ const buildFrecuencias = async (numControles) => {
     }
 
     // Mapear preguntas con TODAS sus opciones posibles y sus cantidades (0 si nadie eligió)
+    const currentYear = new Date().getFullYear();
     const preguntasConFrecuencia = preguntas.map(p => {
       // Filtramos las opciones que pertenecen exactamente a esta pregunta
-      const opcionesFinales = opcionesTextos
+      let opcionesFinales = opcionesTextos
         .filter(o => o.id_pregunta === p.id_pregunta)
         .map(o => ({
           id_opcion: o.id_opcion,
           opcion: o.opcion,
           cantidad: (conteos[p.id_pregunta] || {})[o.id_opcion] || 0
         }));
+
+      // Para la pregunta 21 (años), solo incluir hasta el año actual y ordenados del más reciente al más antiguo
+      if (p.id_pregunta === 21) {
+        opcionesFinales = opcionesFinales
+          .filter(o => {
+            const year = parseInt(o.opcion, 10);
+            return isNaN(year) || year <= currentYear;
+          })
+          .sort((a, b) => parseInt(b.opcion, 10) - parseInt(a.opcion, 10));
+      }
 
       return {
         id_pregunta: p.id_pregunta,
